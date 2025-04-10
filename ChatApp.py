@@ -74,6 +74,9 @@ class APIClient:
             for sock in self._socket_pool:
                 sock.close()
 
+    def chat(self,username):
+        ...
+
 if __name__ == '__main__':
     client = APIClient()
-    client.register("test", "123")
+    client.register(username="lifan", password="lifan123")

@@ -2,6 +2,7 @@ import json
 import socket
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import UDPPortManager
 from JSONDatabase import JSONDatabase
@@ -9,15 +10,16 @@ from RequestHandler import RequestHandler
 from UserUtil import UserManager
 
 class ServerCore:
-    def __init__(self, host='127.0.0.1', port=49000):
+    def __init__(self, host='127.0.0.1', port=49000, max_workers=10):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind((host, port))
         self.db = JSONDatabase()
         self.user_manager = UserManager(self.db)
         self.handler = RequestHandler(self.user_manager,self.db)
         self._shutdown_flag = threading.Event()
-        self._active_threads = set()
-        self._thread_lock = threading.Lock()
+        self._thread_pool = ThreadPoolExecutor(max_workers=max_workers)
+        self._active_tasks = set()
+        self._task_lock = threading.Lock()
 
     def _server_action(self):
         while not self._shutdown_flag.is_set():
@@ -25,19 +27,21 @@ class ServerCore:
                 self.sock.settimeout(1)
                 data, addr = self.sock.recvfrom(1024)
 
-                with self._thread_lock:
-                    t = threading.Thread(
-                        target=self._process_client,
-                        args=(data, addr)
-                    )
-                    self._active_threads.add(t)
-                    t.start()
+                future = self._thread_pool.submit(self._process_client, data, addr)
+
+                with self._task_lock:
+                    self._active_tasks.add(future)
+                future.add_done_callback(self._task_completed)
             except socket.timeout:
-                continue  # 正常超时，继续检查关闭标志
+                continue
             except OSError as e:
                 if not self._shutdown_flag.is_set():
                     print(f"Socket error: {e}")
                 break
+
+    def _task_completed(self, future):
+        with self._task_lock:
+            self._active_tasks.discard(future)
 
     def start(self):
         threading.Thread(target=self._server_action, daemon=True).start()
@@ -54,9 +58,6 @@ class ServerCore:
                 json.dumps({"status": "error", "reason": "encoding_error"}).encode('utf-8'),
                 addr
             )
-        finally:
-            with self._thread_lock:
-                self._active_threads.remove(threading.current_thread())
 
     def close(self):
         print("[*] Chiudendo il server...")
@@ -69,14 +70,13 @@ class ServerCore:
 
         # 3. aspettare un attimo i thread
         start_time = time.time()
-        while self._active_threads and time.time() - start_time < 5:  # 最多等5秒
+        while self._active_tasks and time.time() - start_time < 5:
             time.sleep(0.1)
 
         # 4. terminare i thread
-        with self._thread_lock:
-            for t in list(self._active_threads):
-                if t.is_alive():
-                    print(f"[!] terminato forzatamente {t.ident}")
+        with self._task_lock:
+            for task in self._active_tasks:
+                task.cancel()
 
         # 5. salvare i dati
         self.db.close()

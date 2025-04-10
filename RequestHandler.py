@@ -1,5 +1,6 @@
 import json
 from enum import Enum
+import secrets
 
 from UserUtil import UserManager
 from JSONDatabase import JSONDatabase
@@ -19,14 +20,20 @@ class RequestHandler:
         try:
             request = json.loads(raw_request)
             action = request.get("action")
-            params = request.get("params", {})
-
-            # 路由到对应操作
+            params = request.get("params")
             if action == ActionType.REGISTER.value:
                 return self._handle_register(params)
             elif action == ActionType.LOGIN.value:
                 return self._handle_login(params)
-            elif action == ActionType.GET_INFO.value:
+
+            if "token" not in params:
+                return json.dumps({"status": "error", "message": "Invalid token"})
+
+            username = self.user_manager.get_username_by_token(params["token"])
+            if username is None:
+                return json.dumps({"status": "error", "message": "Invalid token"})
+
+            if action == ActionType.GET_INFO.value:
                 return self._handle_get_info(params)
         except ValueError as e:
             return json.dumps({"status": "error", "message": "invalid_json"})
@@ -50,15 +57,23 @@ class RequestHandler:
         if not all(k in params for k in required):
             return json.dumps({"status": "error", "message": "missing_field"})
         if self.user_manager.login(**params):
+
+
+            # notificare gli altri utenti
             return json.dumps({"status": "success"})
         else:
             return json.dumps({"status": "error", "message": "login_failed"})
 
     def _handle_get_info(self, params: dict) -> str:
+        param_filter = ["username","register_date"]
         if "username" not in params:
             return json.dumps({"status": "error", "message": "missing_field"})
         info = self.user_manager.get_user_info(params["username"])
         if info:
-            return json.dumps({"status": "success", "info": str(info)})
+            filtered_info = {key: info[key] for key in param_filter if key in info}
+            return json.dumps({"status": "success", "info": filtered_info})
         else:
             return json.dumps({"status": "error", "message": "user_not_found"})
+
+    def _handle_register_message(self, params: dict) -> str:
+        required = ["username", "password"]
