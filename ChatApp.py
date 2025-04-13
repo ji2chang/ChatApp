@@ -20,8 +20,6 @@ class APIClient:
         self._message_receiver = threading.Thread(target=self._receive_message,daemon=True)
         self._message_receiver.start()
 
-
-
     def _send_request(self, request: Dict[str, Any], retry: int = 3) -> Dict[str, Any]:
         with UDPPortManager.port_manager.get_free_socket() as sock:
             raw_data = json.dumps(request).encode('utf-8')
@@ -110,6 +108,7 @@ class APIClient:
         while True:
             data, _ = self._default_sock.recvfrom(65535)
             parsed_data = json.loads(data.decode('utf-8'))
+            self._default_sock.sendto(json.dumps({"status":"success"}).encode('utf-8'), (self.server_ip, self.server_port))
             print(f"[{parsed_data['date']}] {parsed_data['sender']}: {parsed_data['message']}")
 
 if __name__ == '__main__':
