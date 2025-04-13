@@ -1,5 +1,1 @@
-# ChatApp
-Gelatti: criptazione dei dati
-Grassi: GUI client
-Mogildea: GUI server
-Wang: resto
+Che cazzo state facendo?? Fare qualcosa pls(probabilmente non vedete)
