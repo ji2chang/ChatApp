@@ -7,26 +7,24 @@ from concurrent.futures import ThreadPoolExecutor
 import UDPPortManager
 from JSONDatabase import JSONDatabase
 from RequestHandler import RequestHandler
-from UserUtil import UserManager
 
 class ServerCore:
     def __init__(self, host='127.0.0.1', port=49000, max_workers=10):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind((host, port))
         self.db = JSONDatabase()
-        self.user_manager = UserManager(self.db)
-        self.handler = RequestHandler(self.user_manager,self.db)
+        self.handler = RequestHandler(self.db)
         self._shutdown_flag = threading.Event()
         self._thread_pool = ThreadPoolExecutor(max_workers=max_workers)
         self._active_tasks = set()
         self._task_lock = threading.Lock()
+
 
     def _server_action(self):
         while not self._shutdown_flag.is_set():
             try:
                 self.sock.settimeout(1)
                 data, addr = self.sock.recvfrom(1024)
-
                 future = self._thread_pool.submit(self._process_client, data, addr)
 
                 with self._task_lock:
@@ -46,11 +44,11 @@ class ServerCore:
     def start(self):
         threading.Thread(target=self._server_action, daemon=True).start()
 
-    def _process_client(self, data: bytes, addr: tuple):
+    def _process_client(self, data: bytes, addr: tuple[str,int]):
         try:
             # utf-8 e rimuovere BOM
             request = data.decode('utf-8-sig').strip()
-            response = self.handler.handle_request(request)
+            response = self.handler.handle_request(request,addr)
             with UDPPortManager.port_manager.get_free_socket() as sock:
                 sock.sendto(response.encode('utf-8'), addr)
         except UnicodeError:
@@ -58,7 +56,6 @@ class ServerCore:
                 json.dumps({"status": "error", "reason": "encoding_error"}).encode('utf-8'),
                 addr
             )
-
     def close(self):
         print("[*] Chiudendo il server...")
 
@@ -91,3 +88,4 @@ if __name__ == '__main__':
         if command == "exit":
             server.close()
             break
+

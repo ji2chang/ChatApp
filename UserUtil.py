@@ -1,32 +1,30 @@
 import datetime
 import hashlib
-import json
+import multiprocessing
 import secrets
+import socket
 import threading
-import time
 from typing import Optional, Any
 import JSONDatabase
-import uuid
 
+import Message
+import UDPPortManager
+from TokenManager import TokenManager
+
+
+USER_DEFAULT_PORT = 49001
 
 def _hash_password(password: str) -> str:
-    """密码哈希处理"""
     return hashlib.sha256(password.encode()).hexdigest()
 
-
 class UserManager:
-    def __init__(self, db: JSONDatabase.JSONDatabase, session_expire_time:int = 3600):
-        self.user_sessions = {} # token -> {uid:UID_3213,timestamp:123213,username:name}
-        self.session_expire_time = session_expire_time # in secondi
+    def __init__(self, db: JSONDatabase.JSONDatabase, token_manager: TokenManager):
         self.db = db
         self.lock = threading.Lock()
-        def _daemon():
-            while True:
-                time.sleep(300)
-                self.clear_expired_tokens()
-
-        self.token_cleaner = threading.Thread(target=_daemon, daemon=True)
-        self.token_cleaner.start()
+        self.token_manager = token_manager
+        self.message_queue = {}
+        self._message_sender = threading.Thread(target=self._send_messages, daemon=True)
+        self._message_sender.start()
 
     def register(self, params) -> bool:
         params["password"] = _hash_password(params["password"])
@@ -40,43 +38,54 @@ class UserManager:
             return False
         return True
 
-    def login(self, username: str, password: str) -> str | None:
+    def is_online(self,username:str) -> bool:
+        return self.token_manager.get_user_by_username(username) is not None
+
+    def login(self, username: str, password: str, ip:str) -> str | None:
         user = self.db.get_user_by_username(username)
         if not user or user["password"] != _hash_password(password):
             return None
         token = secrets.token_hex(16)
-        self.store_token(token, username)
+        self.token_manager.store_token(token, username,ip)
         return token
 
     def get_user_info(self, username: str) -> Optional[dict]:
         return self.db.get_user_by_username(username)
 
-    def is_token_valid(self,token:str):
-        with self.lock:
-            token_data = self.user_sessions.get(token)
-            if token_data is None:
-                return False
-            return datetime.datetime.now().timestamp() - token_data["timestamp"] > self.session_expire_time
+    def log_message(self,message:Message.Message) -> None:
+        target_username = message.receiver
+        if target_username not in self.message_queue:
+            self.message_queue[target_username] = multiprocessing.Queue()
+        self.message_queue[target_username].put(message)
 
-    def get_username_by_token(self, token: str) -> dict[str, Any] | None:
-        if not self.is_token_valid(token):
-            return None
-        return self.user_sessions[token]["username"]
+    def logout(self,token:str) -> None:
+        self.token_manager.delete_token(token)
 
-    def clear_expired_tokens(self):
-        with self.lock:
-            current_time = datetime.datetime.now().timestamp()
-            self.user_sessions = {
-                token:data
-                for token, data in self.user_sessions.items()
-                if current_time - data["timestamp"] < self.session_expire_time
-            }
+    def send_all_messages(self,target_username:str):
+        messages = self.message_queue.get(target_username,multiprocessing.Queue())
+        not_sent = multiprocessing.Queue()
+        while (not messages.empty()) and self.is_online(target_username):
+            ip = self.token_manager.get_user_by_username(target_username)["ip"]
+            message = messages.get()
+            retry = 3
+            with UDPPortManager.port_manager.get_free_socket() as sock:
+                sock.sendto(message.to_json().encode('utf-8'), (ip, USER_DEFAULT_PORT))
+                while retry > 0:
+                    try:
+                        data, _ = sock.recvfrom(4096)
+                        break
+                    except socket.timeout:
+                        retry -= 1
+                        if retry == 0:
+                            not_sent.put(message)
+                            break
+                        continue
+            if messages.empty():
+                messages = not_sent
+        while not messages.empty():
+            self.log_message(messages.get())
 
-    def delete_token(self,token:str):
-        self.user_sessions.pop(token)
-
-    def store_token(self, token: str, username: str) -> dict[str, Any] | None:
-        self.user_sessions[token] = {"username": username, "timestamp": datetime.datetime.now().timestamp()}
-
-    def flush_token(self,token:str) -> None:
-        self.user_sessions[token]["timestamp"] = datetime.datetime.now().timestamp()
+    def _send_messages(self):
+        while True:
+            for target_username in self.message_queue.keys():
+                self.send_all_messages(target_username)

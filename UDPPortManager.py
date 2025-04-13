@@ -22,7 +22,6 @@ class UDPPortManager:
                     sock.bind(('0.0.0.0', 0))
                     port = sock.getsockname()[1]
                 self._used_ports.add(port)
-
             yield sock
         finally:
             if sock:
