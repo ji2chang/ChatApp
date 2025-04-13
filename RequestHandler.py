@@ -29,11 +29,13 @@ class RequestHandler:
             request = json.loads(raw_request)
             action = request.get("action")
             params = request.get("params")
-            params["ip"] = addr[0]
-            params["port"] = addr[1]
             if action == ActionType.REGISTER.value:
                 return self._handle_register(params)
-            elif action == ActionType.LOGIN.value:
+
+            params["ip"] = addr[0]
+            params["port"] = addr[1]
+
+            if action == ActionType.LOGIN.value:
                 return self._handle_login(params)
 
             if not self.token_manager.is_token_valid(params.get("token")):
