@@ -4,7 +4,7 @@ import multiprocessing
 import secrets
 import socket
 import threading
-from typing import Optional, Any
+from typing import Optional, Any, is_protocol
 import JSONDatabase
 
 import Message
@@ -31,7 +31,6 @@ class UserManager:
         try:
             if self.db.get_user_by_username(params["username"]):
                 return False
-            params["info"] = {}
             params["info"]["register_date"] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self.db.add_user(params["username"], params)
         except ValueError:
@@ -50,7 +49,8 @@ class UserManager:
         return token
 
     def get_user_info(self, username: str) -> Optional[dict]:
-        return self.db.get_user_by_username(username)
+        user = self.db.get_user_by_username(username)
+        return user
 
     def log_message(self,message:Message.Message) -> None:
         target_username = message.receiver
@@ -85,7 +85,20 @@ class UserManager:
         while not messages.empty():
             self.log_message(messages.get())
 
+    def get_friends(self,username:str):
+        friends = self.db.get_friends(username)
+        return friends
+
     def _send_messages(self):
         while True:
             for target_username in self.message_queue.keys():
                 self.send_all_messages(target_username)
+
+    def make_friend(self,user1:str,user2:str) -> bool:
+        if not self.db.exists(user1) or not self.db.exists(user2):
+            return False
+        self.db.add_friend(user1,user2)
+        self.db.add_friend(user2,user1)
+        return True
+
+

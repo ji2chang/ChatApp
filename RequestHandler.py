@@ -17,6 +17,8 @@ class ActionType(Enum):
     GET_INFO = "get_info"
     CHAT = "chat"
     LOGOUT = "logout"
+    GET_FRIENDS = "get_friends"
+    ADD_FRIEND ="add_friend"
 
 class RequestHandler:
     def __init__(self, db: JSONDatabase):
@@ -47,12 +49,16 @@ class RequestHandler:
                 return self._handle_chat(params)
             elif action == ActionType.LOGOUT.value:
                 return self._handle_logout(params)
+            elif action == ActionType.GET_FRIENDS.value:
+                return self._handle_get_friends(params)
+            elif action == ActionType.ADD_FRIEND.value:
+                return self._handle_add_friend(params)
         except ValueError as e:
             return json.dumps({"status": "error", "message": "invalid_json"})
         return json.dumps({"status": "error", "message": "action_not_found"})
 
     def _handle_register(self, params: dict) -> str:
-        required = ["username", "password"]
+        required = ["username", "password","info"]
         if not all(k in params for k in required):
             return json.dumps({"status": "error", "message": "missing_field"})
         success = self.user_manager.register(
@@ -68,22 +74,23 @@ class RequestHandler:
         filtered_params = {k: params[k] for k in required if k in params}
         token = self.user_manager.login(**filtered_params)
         if token:
-            response = {
-                "status": "success",
-                "token" : token
-            }
+            response = json.loads(self._handle_get_info({"username" : filtered_params["username"]}))
+
+            response["info"]["token"] = token
             return json.dumps(response)
         else:
             return json.dumps({"status": "error", "message": "login_failed"})
 
     def _handle_get_info(self, params: dict) -> str:
-        param_filter = ["username","register_date"]
+        param_filter = ["username","info"]
         if "username" not in params:
             return json.dumps({"status": "error", "message": "missing_field"})
         info = self.user_manager.get_user_info(params["username"])
         if info:
-            filtered_info = {key: info[key] for key in param_filter if key in info}
-            return json.dumps({"status": "success", "info": filtered_info})
+            response = {key: info[key] for key in param_filter if key in info}
+            response["info"]["online"] = self.user_manager.is_online(params["username"])
+            response["status"] = "success"
+            return json.dumps(response)
         else:
             return json.dumps({"status": "error", "message": "user_not_found"})
 
@@ -102,3 +109,18 @@ class RequestHandler:
     def _handle_logout(self, params: dict) -> str:
         self.user_manager.logout(params["token"])
         return json.dumps({"status": "success"})
+
+    def _handle_get_friends(self,params:dict) -> str:
+        username = self.token_manager.get_user_by_token(params["token"])["username"]
+        response = {"status": "success", "friends": self.user_manager.get_friends(username)}
+        return json.dumps(response)
+
+    def _handle_add_friend(self,params:dict) -> str:
+        required = ["target_username"]
+        if not all(k in params for k in required):
+            return json.dumps({"status": "error", "message": "missing_field"})
+        source_user = self.token_manager.get_user_by_token(params["token"]).get("username")
+        target_user = params["target_username"]
+        if self.user_manager.make_friend(source_user,target_user):
+            return json.dumps({"status": "success"})
+        return json.dumps({"status": "error", "message": "user do not exists"})

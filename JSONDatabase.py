@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import threading
@@ -45,20 +46,20 @@ class JSONDatabase:
     def _sync_to_disk(self):
         with self._lock:
             with open(self.file_path, 'w') as f:
-                json.dump(self._data, f, indent=2)
+                json.dump(self._data, f, indent=2) # salvare tutto il file (forse da migliorare?)
 
     def add_user(self,username:str, value : any):
         uid = str(uuid.uuid4().hex[:8])
         with self._lock:
             self._data["users"][uid] = value
             self._data["indexes"]["username_to_uid"][username] = uid
+            self._data["users"][uid]["friends"] = {}
         return uid
 
     def get_user_by_username(self, username: str) -> Dict[str,Any] | None:
-        uid = self._data["indexes"]["username_to_uid"].get(username)
-        if uid is None:
+        if not self.exists(username):
             return None
-        return self._data["users"][uid]
+        return self._data["users"][self._data["indexes"]["username_to_uid"][username]]
 
     def close(self):
         self._sync_to_disk()
@@ -71,3 +72,15 @@ class JSONDatabase:
             uid = self._data["indexes"]["username_to_uid"].get(username)
         with self._lock:
             self._data["users"][uid] = info
+
+    def get_friends(self, username: str) -> Dict[str, Any]:
+        uid = self._data["indexes"]["username_to_uid"].get(username)
+        return self._data["users"][uid]["friends"]
+
+    def add_friend(self,username1: str,username2: str):
+        uid1 = self._data["indexes"]["username_to_uid"].get(username1)
+        with self._lock:
+            self._data["users"][uid1]["friends"][username2] = {}
+
+    def exists(self,username: str) -> bool:
+        return username in self._data["indexes"]["username_to_uid"]

@@ -9,15 +9,16 @@ from JSONDatabase import JSONDatabase
 from RequestHandler import RequestHandler
 
 class ServerCore:
-    def __init__(self, host='127.0.0.1', port=49000, max_workers=10):
+    def __init__(self, host='0.0.0.0', port=49000, max_workers=10):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind((host, port))
+        self._server_address = (host, port)
         self.db = JSONDatabase()
         self.handler = RequestHandler(self.db)
         self._shutdown_flag = threading.Event()
         self._thread_pool = ThreadPoolExecutor(max_workers=max_workers)
         self._active_tasks = set()
         self._task_lock = threading.Lock()
+        self._started = False
 
 
     def _server_action(self):
@@ -42,7 +43,14 @@ class ServerCore:
             self._active_tasks.discard(future)
 
     def start(self):
+        print("[*] Accendendo il server...")
+        try :
+            self.sock.bind(self._server_address)
+        except socket.error:
+            ... # do nothing
         threading.Thread(target=self._server_action, daemon=True).start()
+        self._shutdown_flag.clear()
+        print("[✓] Server acceso!")
 
     def _process_client(self, data: bytes, addr: tuple[str,int]):
         try:

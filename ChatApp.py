@@ -6,19 +6,20 @@ from typing import Dict, Any
 
 import UDPPortManager
 import UserUtil
-
+DEFAULT_SERVER_IP = "10.11.214.213"
 class APIClient:
-    def __init__(self, server_ip:str = "127.0.0.1",server_port:int = 49000, max_workers: int = 4):
+    def __init__(self, server_ip:str = DEFAULT_SERVER_IP,server_port:int = 49000, max_workers: int = 4):
         self.server_ip = server_ip
         self.server_port = server_port
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self._socket_pool = []
         self._pool_lock = threading.Lock()
-        self._token = None
         self._default_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._default_sock.bind(('0.0.0.0', UserUtil.USER_DEFAULT_PORT))
         self._message_receiver = threading.Thread(target=self._receive_message,daemon=True)
         self._message_receiver.start()
+        self.current_user = {}
+        self.friends = []
 
     def _send_request(self, request: Dict[str, Any], retry: int = 3) -> Dict[str, Any]:
         with UDPPortManager.port_manager.get_free_socket() as sock:
@@ -36,15 +37,15 @@ class APIClient:
         return {"error":"fail_to_send"}
 
 
-    def register(self, username: str, password: str, **kwargs) -> Dict[str, Any]:
+    def register(self, username: str, password: str, info:dict) -> Dict[str, Any]:
         request = {
                 "action": "register",
                 "params": {
                     "username": username,
                     "password": password,
-                    **kwargs
                 }
             }
+        request["params"]["info"] = info
         return self._send_request(request)
 
 
@@ -58,17 +59,32 @@ class APIClient:
             }
         response = self._send_request(request)
         if response["status"] == "success":
-            self._token = response["token"]
+            self.current_user = response["info"]
         return response
 
-    def get_user_info(self, uid: str) -> Dict[str, Any]:
+    def get_friends(self):
+        request = {
+            "action": "get_friends",
+            "params": {
+                "token" : self.current_user["token"]
+            }
+        }
+        response = self._send_request(request)
+        if response["status"] == "success":
+            self.friends = response["friends"]
+            for friend in self.friends:
+                self.friends[friend] = self.get_user_info(friend)
+        else:
+            self.friends = []
+
+    def get_user_info(self, username: str) -> Dict[str, Any]:
         return self.executor.submit(
             self._send_request,
             {
                 "action": "get_info",
                 "params": {
-                    "uid": uid,
-                    "token": self._token
+                    "username": username,
+                    "token": self.current_user["token"]
                 },
 
             }
@@ -80,11 +96,23 @@ class APIClient:
             {
                 "action": "logout",
                 "params": {
-                    "token": self._token
+                    "token": self.current_user["token"]
                 }
             }
         ).result()
 
+    def add_friend(self,username):
+        request = {
+            "action": "add_friend",
+            "params": {
+                "target_username" : username,
+                "token": self.current_user["token"]
+            }
+        }
+        return self.executor.submit(
+            self._send_request,
+            request
+        ).result()
     def close(self):
         self.executor.shutdown()
         with self._pool_lock:
@@ -97,7 +125,7 @@ class APIClient:
             "params": {
                 "target_username": target_user,
                 "message": message,
-                "token": self._token
+                "token": self.current_user["token"]
             },
 
         }
@@ -112,7 +140,8 @@ class APIClient:
             print(f"[{parsed_data['date']}] {parsed_data['sender']}: {parsed_data['message']}")
 
 if __name__ == '__main__':
-    client = APIClient()
+    server_ip=input("Inserire ip server: ")
+    client = APIClient(server_ip=server_ip)
     while True:
         command = input("> ")
         if command == "login":
@@ -126,6 +155,7 @@ if __name__ == '__main__':
         elif command == "register":
             username = input("Username: ")
             password = input("Password: ")
-            print(client.register(username,password))
+            nickname = input("Nickname: ")
+            print(client.register(username,password,{"nickname":nickname}))
         elif command == "logout":
             print(client.logout())
