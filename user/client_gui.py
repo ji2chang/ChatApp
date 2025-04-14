@@ -1,11 +1,14 @@
 import re
+import threading
+import time
+
 import dearpygui.dearpygui as dpg
 import ChatApp
 
 current_chat_with = None
-api: ChatApp.APIClient
+api = ChatApp.APIClient()
 DEFAULT_GRAY = [37,37,39]
-
+message_cnt = 0
 def center_window(window_tag, width, height):
     viewport_width = dpg.get_viewport_width()
     viewport_height = dpg.get_viewport_height()
@@ -42,12 +45,14 @@ def server_config_callback():
         dpg.set_value("server_config_status", "Error: Format must be IP")
         return
 
-    api = ChatApp.APIClient(server_ip=address)
+    api.connect_server(address)
     dpg.delete_item("server_config_window")
     create_login_interface()
 
 
 def update_user_list():
+    if not dpg.does_item_exist("chat_window"):
+        return
     """Refresh the user list display in the left sidebar"""
     # First, delete the existing user list items
     if dpg.does_item_exist("user_list_group"):
@@ -98,6 +103,20 @@ def login_callback():
     else:
         dpg.set_value("login_status", "Error: Incorrect username or password!")
 
+def register_callback():
+    username = dpg.get_value("reg_username_input")
+    password = dpg.get_value("reg_password_input")
+    confirm_password = dpg.get_value("reg_confirm_password_input")
+    nickname = dpg.get_value("reg_nickname_input")
+    if not password == confirm_password:
+        dpg.set_value("register_status", "Error: password do not match!")
+        return
+    response = api.register(username, password, {"nickname": nickname})
+    if response["status"] == "success":
+        dpg.set_value("register_status", "Registration successful, redirecting...")
+        create_login_interface()
+    else:
+        dpg.set_value("register_status", "Error: register failed!")
 
 # Message sending function
 def send_message():
@@ -118,7 +137,7 @@ def select_user(sender, app_data, user_data):
 
 # Update chat display
 def update_chat_display():
-    if not current_chat_with:
+    if not current_chat_with or not dpg.does_item_exist("chat_window"):
         return
     history = "\n".join(api.get_messages(current_chat_with))
     dpg.set_value("chat_history", history or "No messages yet")
@@ -187,8 +206,14 @@ def create_chat_interface():
 
 # Create login interface
 def create_login_interface():
-    with dpg.window(label="Login Window", tag="login_window", width=400, height=300, no_resize=True, no_move=True,
-                    no_collapse=True,no_title_bar=True):
+    # First delete any existing windows to avoid duplicates
+    if dpg.does_item_exist("login_window"):
+        dpg.delete_item("login_window")
+    if dpg.does_item_exist("register_window"):
+        dpg.delete_item("register_window")
+
+    with dpg.window(label="Login Window", tag="login_window", width=400, height=300,
+                    no_resize=True, no_move=True, no_collapse=True, no_title_bar=True):
         dpg.add_text("Welcome", pos=[150, 30])
 
         # Username input
@@ -202,22 +227,63 @@ def create_login_interface():
         # Login button
         dpg.add_button(label="Login", callback=login_callback, pos=[150, 170], width=100)
 
+        # Register button - switches to register interface
+        dpg.add_button(label="Register Account", callback=create_register_interface,
+                       pos=[260, 270], width=130)
+
         # Login status
-        dpg.add_text(tag="login_status", pos=[50, 220], color=[255, 0, 0])
+        dpg.add_text(tag="login_status", pos=[50, 250], color=[255, 0, 0])
     update_window()
 
 
+def create_register_interface():
+    # First delete any existing windows to avoid duplicates
+    if dpg.does_item_exist("register_window"):
+        dpg.delete_item("register_window")
+    if dpg.does_item_exist("login_window"):
+        dpg.delete_item("login_window")
+
+    with dpg.window(label="Register Window", tag="register_window", width=400, height=350,
+                    no_resize=True, no_move=True, no_collapse=True, no_title_bar=True):
+        dpg.add_text("Register", pos=[150, 30])
+
+        # Username input
+        dpg.add_text("Username:", pos=[50, 80])
+        dpg.add_input_text(tag="reg_username_input", width=200, pos=[140, 80])
+
+        # Password input
+        dpg.add_text("Password:", pos=[50, 120])
+        dpg.add_input_text(tag="reg_password_input", password=True, width=200, pos=[140, 120])
+
+        # Confirm Password input
+        dpg.add_text("Confirm \nPassword:", pos=[50, 155])
+        dpg.add_input_text(tag="reg_confirm_password_input", password=True, width=200, pos=[140, 160])
+
+        # nickname input
+        dpg.add_text("Nickname:", pos=[50, 200])
+        dpg.add_input_text(tag="reg_nickname_input", width=200, pos=[140, 200])
+
+        # Register button
+        dpg.add_button(label="Register", callback=register_callback, pos=[150, 240], width=100)
+
+        # Back to login button
+        dpg.add_button(label="Back to Login", callback=create_login_interface,
+                       pos=[290, 270], width=100)
+
+        # Registration status
+        dpg.add_text(tag="register_status", pos=[50, 320], color=[255, 0, 0])
+    update_window()
+
 # Viewport resize handler
 def update_window():
-    width = dpg.get_viewport_width()
-    height = dpg.get_viewport_height()
-
     if dpg.does_item_exist("server_config_window"):
         center_window("server_config_window",400,300)
     elif dpg.does_item_exist("login_window"):
         center_window("login_window",400,300)
     elif dpg.does_item_exist("chat_window"):
         center_window("chat_window", 1000, 700)
+    elif dpg.does_item_exist("register_window"):
+        center_window("register_window", 400, 350)
 
 # Initialization
 if __name__ == "__main__":
@@ -232,17 +298,28 @@ if __name__ == "__main__":
     dpg.set_viewport_min_height(700)
     dpg.set_viewport_max_width(1200)
     dpg.set_viewport_max_height(800)
-
     with dpg.theme() as window_theme:
         with dpg.theme_component(dpg.mvAll):
             dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 3.0)
             dpg.add_theme_color(dpg.mvThemeCol_Border, (255,255,255,100))
             dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DEFAULT_GRAY)
 
+    def _daemon():
+        global message_cnt
+        while True:
+            cnt = len(api.chat_history)
+            if not cnt == message_cnt:
+                update_chat_display()
+                update_user_list()
+                message_cnt = cnt
+            time.sleep(1)
+
+    updater = threading.Thread(target=_daemon,daemon=True)
+    updater.start()
     dpg.bind_theme(window_theme)
 
     create_server_config_interface()
-
+    dpg.set_exit_callback(api.close)
     dpg.set_viewport_resize_callback(update_window)
     dpg.setup_dearpygui()
     dpg.show_viewport()

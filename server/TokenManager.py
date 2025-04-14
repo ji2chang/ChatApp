@@ -60,7 +60,7 @@ class TokenManager:
     def flush_token(self,token:str) -> None:
         with self.lock:
             self.tokens[token]["timestamp"] = datetime.datetime.now().timestamp()
-            self.username_to_token[self.get_user_by_token(token)] = token
+            self.username_to_token[self.get_user_by_token(token)["username"]] = token
 
     def get_token_by_username(self, username:str) -> str | None:
         return self.username_to_token.get(username,None)

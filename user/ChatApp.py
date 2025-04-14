@@ -1,5 +1,6 @@
 import datetime
 import json
+import os
 import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -7,11 +8,12 @@ from typing import Dict, Any
 
 from server import UDPPortManager, UserUtil
 
-DEFAULT_SERVER_IP = "10.11.214.213"
+DEFAULT_SERVER_IP = "192.168.1.104"
 class APIClient:
     def __init__(self, server_ip:str = DEFAULT_SERVER_IP,server_port:int = 49000, max_workers: int = 4):
-        self.server_ip = server_ip
-        self.server_port = server_port
+        self.file_path = "user/chats.json"
+        self._server_ip = server_ip
+        self._server_port = server_port
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self._socket_pool = []
         self._pool_lock = threading.Lock()
@@ -22,12 +24,32 @@ class APIClient:
         self.current_user = {}
         self.friends = {}
         self._chat_lock = threading.Lock()
-        self._chat_history = {}
+        self._load_chats()
+
+
+    def connect_server(self,server_ip:str,server_port:int = 49000):
+        self._server_ip = server_ip
+        self._server_port = server_port
+
+    def _load_chats(self):
+        if not os.path.exists(self.file_path):
+            with open(self.file_path, 'w') as f:
+                json.dump({}, f)
+        try:
+            with open(self.file_path, 'r') as f:
+                self.chat_history = json.load(f)
+        except json.JSONDecodeError:
+            self.chat_history = {}
+
+    def save_messages(self):
+        with self._chat_lock:
+            with open(self.file_path, 'w') as f:
+                json.dump(self.chat_history, f, indent=2) # salvare tutto il file (forse da migliorare?)
 
     def _send_request(self, request: Dict[str, Any], retry: int = 3) -> Dict[str, Any]:
         with UDPPortManager.port_manager.get_free_socket() as sock:
             raw_data = json.dumps(request).encode('utf-8')
-            sock.sendto(raw_data, (self.server_ip, self.server_port))
+            sock.sendto(raw_data, (self._server_ip, self._server_port))
             while retry > 0:
                 try:
                     data, _ = sock.recvfrom(65535)
@@ -65,8 +87,8 @@ class APIClient:
             self.current_user = response["info"]
             self.current_user["username"] = username
             with self._chat_lock:
-                if username not in self._chat_history:
-                    self._chat_history[username] = {}
+                if username not in self.chat_history:
+                    self.chat_history[username] = {}
         return response
 
     def get_friends(self):
@@ -76,13 +98,14 @@ class APIClient:
                 "token" : self.current_user["token"]
             }
         }
-        response = self._send_request(request)
+        response = self.executor.submit(
+            self._send_request,
+            request,
+        ).result()
         if response["status"] == "success":
             self.friends = response["friends"]
             for friend in self.friends:
                 self.friends[friend] = self.get_user_info(friend)
-        else:
-            self.friends = []
 
     def get_user_info(self, username: str) -> Dict[str, Any]:
         return self.executor.submit(
@@ -122,22 +145,26 @@ class APIClient:
         ).result()
 
     def close(self):
+        self.logout()
+        self.save_messages()
         self.executor.shutdown()
         with self._pool_lock:
             for sock in self._socket_pool:
                 sock.close()
 
     def chat(self, target_user, message):
-        server_request = {
+        request = {
             "action": "chat",
             "params": {
                 "target_username": target_user,
                 "message": message,
                 "token": self.current_user["token"]
             },
-
         }
-        response = self._send_request(server_request,3)
+        response = self.executor.submit(
+            self._send_request,
+            request
+        ).result()
         if response["status"] == "success":
             self._add_message(target_user,self.current_user["nickname"], message,datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         return response
@@ -145,26 +172,27 @@ class APIClient:
     def _add_message(self,dest_user:str,sender:str,message:str,date:str):
         curr_user = self.current_user["username"]
         with self._chat_lock:
-            if curr_user not in self._chat_history:
-                self._chat_history[curr_user] = {}
-            if dest_user not in self._chat_history[curr_user]:
-                self._chat_history[curr_user][dest_user] = []
-            self._chat_history[curr_user][dest_user].append(f"[{date}] {sender}: {message}")
+            if curr_user not in self.chat_history:
+                self.chat_history[curr_user] = {}
+            if dest_user not in self.chat_history[curr_user]:
+                self.chat_history[curr_user][dest_user] = []
+            self.chat_history[curr_user][dest_user].append(f"[{date}] {sender}: {message}")
 
     def _receive_message(self):
         while True:
             data, _ = self._default_sock.recvfrom(65535)
             parsed_data = json.loads(data.decode('utf-8'))
-            self._default_sock.sendto(json.dumps({"status":"success"}).encode('utf-8'), (self.server_ip, self.server_port))
+            self._default_sock.sendto(json.dumps({"status":"success"}).encode('utf-8'), (self._server_ip, self._server_port))
             sender = parsed_data["sender"]
             if sender in self.friends:
                 nickname = self.friends[sender]["info"]["nickname"]
             else:
-                nickname = self.get_user_info(sender)["info"]["nickname"]
+                nickname = self.get_user_info(sender)
+                self.friends[sender] = {"info":{"nickname":nickname}}
             self._add_message(sender,nickname,parsed_data["message"],parsed_data["date"])
 
     def get_messages(self,target_user):
-        return self._chat_history[self.current_user["username"]].get(target_user,[])
+        return self.chat_history[self.current_user["username"]].get(target_user,[])
 
 if __name__ == '__main__':
     server_ip=input("Inserire ip server: ")
