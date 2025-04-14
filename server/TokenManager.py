@@ -53,6 +53,9 @@ class TokenManager:
             self.username_to_token.pop(username,None)
 
     def store_token(self, token: str, username: str, ip):
+        tk = self.username_to_token.get(username,None)
+        if tk is not None:
+            self.delete_token(tk)
         with self.lock:
             self.tokens[token] = {"username": username, "timestamp": datetime.datetime.now().timestamp(), "ip": ip}
             self.username_to_token[username] = token
