@@ -130,6 +130,7 @@ def send_message():
         response = api.chat(current_chat_with, message)
         if response["status"] == "token_invalid":
             create_login_interface()
+            return
         dpg.set_value("message_input", "")
         update_chat_display()
 

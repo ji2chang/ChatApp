@@ -107,7 +107,7 @@ class APIClient:
             self.friends = response["friends"]
             for friend in self.friends:
                 friend_info = self.get_user_info(friend)
-                if friend_info.get("status","success") != "success":
+                if friend_info.get("status","success") == "token_invalid":
                     return {"status": "token_invalid"}
                 self.friends[friend] = friend_info
         return response
