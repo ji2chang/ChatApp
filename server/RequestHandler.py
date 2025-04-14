@@ -38,7 +38,7 @@ class RequestHandler:
                 return self._handle_login(params)
 
             if not self.token_manager.is_token_valid(params.get("token")):
-                return json.dumps({"status": "error", "message": "Invalid token"})
+                return json.dumps({"status": "token_invalid", "message": "Invalid token"})
             self.token_manager.flush_token(token=params["token"])
             if action == ActionType.GET_INFO.value:
                 return self._handle_get_info(params)
