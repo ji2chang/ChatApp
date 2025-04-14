@@ -11,7 +11,7 @@ from server import UDPPortManager, UserUtil
 DEFAULT_SERVER_IP = "192.168.1.104"
 class APIClient:
     def __init__(self, server_ip:str = DEFAULT_SERVER_IP,server_port:int = 49000, max_workers: int = 4):
-        self.file_path = "user/chats.json"
+        self.file_path = "chats.json"
         self._server_ip = server_ip
         self._server_port = server_port
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
@@ -25,6 +25,7 @@ class APIClient:
         self.friends = {}
         self._chat_lock = threading.Lock()
         self._load_chats()
+        self.tot_update = 0
 
 
     def connect_server(self,server_ip:str,server_port:int = 49000):
@@ -177,6 +178,7 @@ class APIClient:
             if dest_user not in self.chat_history[curr_user]:
                 self.chat_history[curr_user][dest_user] = []
             self.chat_history[curr_user][dest_user].append(f"[{date}] {sender}: {message}")
+            self.tot_update = self.tot_update + 1
 
     def _receive_message(self):
         while True:

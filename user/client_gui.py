@@ -307,7 +307,7 @@ if __name__ == "__main__":
     def _daemon():
         global message_cnt
         while True:
-            cnt = len(api.chat_history)
+            cnt = api.tot_update
             if not cnt == message_cnt:
                 update_chat_display()
                 update_user_list()
