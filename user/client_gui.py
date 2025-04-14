@@ -57,7 +57,7 @@ def update_user_list():
     # First, delete the existing user list items
     if dpg.does_item_exist("user_list_group"):
         dpg.delete_item("user_list_group")
-
+    api.get_friends()
     # Then recreate the user list
     with dpg.group(parent="left_panel", tag="user_list_group"):
         dpg.add_text(f"Hello, {api.current_user['nickname']}!")
