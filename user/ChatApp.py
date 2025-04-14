@@ -106,7 +106,11 @@ class APIClient:
         if response["status"] == "success":
             self.friends = response["friends"]
             for friend in self.friends:
-                self.friends[friend] = self.get_user_info(friend)
+                friend_info = self.get_user_info(friend)
+                if friend_info.get("status","success") != "success":
+                    return {"status": "token_invalid"}
+                self.friends[friend] = friend_info
+        return response
 
     def get_user_info(self, username: str) -> Dict[str, Any]:
         return self.executor.submit(
@@ -117,7 +121,6 @@ class APIClient:
                     "username": username,
                     "token": self.current_user["token"]
                 },
-
             }
         ).result()
 

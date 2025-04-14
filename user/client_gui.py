@@ -26,6 +26,9 @@ def send_friend_request():
             dpg.set_value("friend_request_status", f"Friend request sent to {username}!")
             api.get_friends()
             update_user_list()
+        elif response["status"] == "token_invalid" :
+            create_login_interface()
+            return
         else:
             dpg.set_value("friend_request_status", f"Error: {response.get('message', 'Failed to send request')}")
         dpg.set_value("friend_request_input", "")  # Clear input box
@@ -57,7 +60,9 @@ def update_user_list():
     # First, delete the existing user list items
     if dpg.does_item_exist("user_list_group"):
         dpg.delete_item("user_list_group")
-    api.get_friends()
+    if api.get_friends().get("status") == "token_invalid":
+        create_login_interface()
+        return
     # Then recreate the user list
     with dpg.group(parent="left_panel", tag="user_list_group"):
         dpg.add_text(f"Hello, {api.current_user['nickname']}!")
@@ -122,7 +127,9 @@ def register_callback():
 def send_message():
     message = dpg.get_value("message_input")
     if message:
-        api.chat(current_chat_with, message)
+        response = api.chat(current_chat_with, message)
+        if response["status"] == "token_invalid":
+            create_login_interface()
         dpg.set_value("message_input", "")
         update_chat_display()
 
@@ -145,6 +152,7 @@ def update_chat_display():
 
 # 创建服务器配置界面
 def create_server_config_interface():
+    delete_all()
     with dpg.window(label="Server Configuration", tag="server_config_window", width=400, height=300, no_resize=True,
                     no_move=True, no_collapse=True,no_title_bar=True):
         dpg.add_text("Welcome to Chat App", pos=[120, 30])
@@ -170,6 +178,7 @@ def create_server_config_interface():
 
 # Create chat interface
 def create_chat_interface():
+    delete_all()
     api.get_friends()
     with dpg.window(label="Chat Room", tag="chat_window", width=1000, height=700, no_resize=True, no_move=True,
                     no_collapse=True,no_title_bar=True):
@@ -203,14 +212,17 @@ def create_chat_interface():
                 dpg.add_button(label="Send", callback=send_message)
     update_window()
 
-
-# Create login interface
-def create_login_interface():
-    # First delete any existing windows to avoid duplicates
+def delete_all():
+    if dpg.does_item_exist("chat_window"):
+        dpg.delete_item("chat_window")
     if dpg.does_item_exist("login_window"):
         dpg.delete_item("login_window")
     if dpg.does_item_exist("register_window"):
         dpg.delete_item("register_window")
+# Create login interface
+def create_login_interface():
+    # First delete any existing windows to avoid duplicates
+    delete_all()
 
     with dpg.window(label="Login Window", tag="login_window", width=400, height=300,
                     no_resize=True, no_move=True, no_collapse=True, no_title_bar=True):
@@ -238,10 +250,7 @@ def create_login_interface():
 
 def create_register_interface():
     # First delete any existing windows to avoid duplicates
-    if dpg.does_item_exist("register_window"):
-        dpg.delete_item("register_window")
-    if dpg.does_item_exist("login_window"):
-        dpg.delete_item("login_window")
+    delete_all()
 
     with dpg.window(label="Register Window", tag="register_window", width=400, height=350,
                     no_resize=True, no_move=True, no_collapse=True, no_title_bar=True):
@@ -312,6 +321,7 @@ if __name__ == "__main__":
                 update_chat_display()
                 update_user_list()
                 message_cnt = cnt
+
             time.sleep(1)
 
     updater = threading.Thread(target=_daemon,daemon=True)
