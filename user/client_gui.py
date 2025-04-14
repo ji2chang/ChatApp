@@ -313,19 +313,21 @@ if __name__ == "__main__":
             dpg.add_theme_color(dpg.mvThemeCol_Border, (255,255,255,100))
             dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DEFAULT_GRAY)
 
-    def _daemon():
+    def _message():
         global message_cnt
         while True:
             cnt = api.tot_update
             if not cnt == message_cnt:
                 update_chat_display()
-                update_user_list()
                 message_cnt = cnt
 
             time.sleep(1)
-
-    updater = threading.Thread(target=_daemon,daemon=True)
-    updater.start()
+    def _friend_list():
+        while True:
+            update_user_list()
+            time.sleep(2)
+    threading.Thread(target=_friend_list,daemon=True).start()
+    threading.Thread(target=_message,daemon=True).start()
     dpg.bind_theme(window_theme)
 
     create_server_config_interface()
