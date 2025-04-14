@@ -325,7 +325,7 @@ if __name__ == "__main__":
     def _friend_list():
         while True:
             update_user_list()
-            time.sleep(10)
+            time.sleep(60)
     threading.Thread(target=_friend_list,daemon=True).start()
     threading.Thread(target=_message,daemon=True).start()
     dpg.bind_theme(window_theme)
