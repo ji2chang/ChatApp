@@ -33,15 +33,17 @@ class TokenManager:
 
     def clear_expired_tokens(self):
         with self.lock:
-            self.tokens = {
-                token:data
+            valid_tokens = {
+                token: data
                 for token, data in self.tokens.items()
                 if self.is_token_valid(token)
             }
+
+            self.tokens = valid_tokens
+
             self.username_to_token = {
-                username:token
-                for username, token in self.tokens.items()
-                if token in self.tokens
+                data["username"]: token
+                for token, data in valid_tokens.items()
             }
 
     def delete_token(self,token:str):

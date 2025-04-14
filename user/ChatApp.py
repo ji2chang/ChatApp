@@ -1,11 +1,12 @@
+import datetime
 import json
 import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any
 
-import UDPPortManager
-import UserUtil
+from server import UDPPortManager, UserUtil
+
 DEFAULT_SERVER_IP = "10.11.214.213"
 class APIClient:
     def __init__(self, server_ip:str = DEFAULT_SERVER_IP,server_port:int = 49000, max_workers: int = 4):
@@ -19,7 +20,9 @@ class APIClient:
         self._message_receiver = threading.Thread(target=self._receive_message,daemon=True)
         self._message_receiver.start()
         self.current_user = {}
-        self.friends = []
+        self.friends = {}
+        self._chat_lock = threading.Lock()
+        self._chat_history = {}
 
     def _send_request(self, request: Dict[str, Any], retry: int = 3) -> Dict[str, Any]:
         with UDPPortManager.port_manager.get_free_socket() as sock:
@@ -60,6 +63,10 @@ class APIClient:
         response = self._send_request(request)
         if response["status"] == "success":
             self.current_user = response["info"]
+            self.current_user["username"] = username
+            with self._chat_lock:
+                if username not in self._chat_history:
+                    self._chat_history[username] = {}
         return response
 
     def get_friends(self):
@@ -113,6 +120,7 @@ class APIClient:
             self._send_request,
             request
         ).result()
+
     def close(self):
         self.executor.shutdown()
         with self._pool_lock:
@@ -130,14 +138,33 @@ class APIClient:
 
         }
         response = self._send_request(server_request,3)
+        if response["status"] == "success":
+            self._add_message(target_user,self.current_user["nickname"], message,datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         return response
+
+    def _add_message(self,dest_user:str,sender:str,message:str,date:str):
+        curr_user = self.current_user["username"]
+        with self._chat_lock:
+            if curr_user not in self._chat_history:
+                self._chat_history[curr_user] = {}
+            if dest_user not in self._chat_history[curr_user]:
+                self._chat_history[curr_user][dest_user] = []
+            self._chat_history[curr_user][dest_user].append(f"[{date}] {sender}: {message}")
 
     def _receive_message(self):
         while True:
             data, _ = self._default_sock.recvfrom(65535)
             parsed_data = json.loads(data.decode('utf-8'))
             self._default_sock.sendto(json.dumps({"status":"success"}).encode('utf-8'), (self.server_ip, self.server_port))
-            print(f"[{parsed_data['date']}] {parsed_data['sender']}: {parsed_data['message']}")
+            sender = parsed_data["sender"]
+            if sender in self.friends:
+                nickname = self.friends[sender]["info"]["nickname"]
+            else:
+                nickname = self.get_user_info(sender)["info"]["nickname"]
+            self._add_message(sender,nickname,parsed_data["message"],parsed_data["date"])
+
+    def get_messages(self,target_user):
+        return self._chat_history[self.current_user["username"]].get(target_user,[])
 
 if __name__ == '__main__':
     server_ip=input("Inserire ip server: ")

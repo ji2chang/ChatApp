@@ -4,7 +4,7 @@ import multiprocessing
 import secrets
 import socket
 import threading
-from typing import Optional, Any, is_protocol
+from typing import Optional
 import JSONDatabase
 
 import Message
@@ -50,9 +50,9 @@ class UserManager:
 
     def get_user_info(self, username: str) -> Optional[dict]:
         user = self.db.get_user_by_username(username)
-        return user
+        return user.copy()
 
-    def log_message(self,message:Message.Message) -> None:
+    def log_message(self, message: Message.Message) -> None:
         target_username = message.receiver
         if target_username not in self.message_queue:
             self.message_queue[target_username] = multiprocessing.Queue()

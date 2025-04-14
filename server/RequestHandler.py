@@ -1,12 +1,9 @@
 import datetime
 import json
-from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
-import secrets
-from typing import Tuple, Any
+from typing import Tuple
 
 import Message
-import UDPPortManager
 from TokenManager import TokenManager
 from UserUtil import UserManager
 from JSONDatabase import JSONDatabase
@@ -88,8 +85,8 @@ class RequestHandler:
         info = self.user_manager.get_user_info(params["username"])
         if info:
             response = {key: info[key] for key in param_filter if key in info}
-            response["info"]["online"] = self.user_manager.is_online(params["username"])
             response["status"] = "success"
+            response["info"]["online"] = self.user_manager.is_online(params["username"])
             return json.dumps(response)
         else:
             return json.dumps({"status": "error", "message": "user_not_found"})
@@ -102,7 +99,7 @@ class RequestHandler:
         source_user = self.token_manager.get_user_by_token(params["token"]).get("username")
         target_user = params["target_username"]
         date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        message = Message.Message(sender=source_user,receiver=target_user,message=params["message"],date=date)
+        message = Message.Message(sender=source_user, receiver=target_user, message=params["message"], date=date)
         self.user_manager.log_message(message)
         return json.dumps({"status": "success"})
 
