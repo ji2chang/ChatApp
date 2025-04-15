@@ -1,6 +1,7 @@
 import datetime
 import hashlib
 import multiprocessing
+import queue
 import secrets
 import socket
 import threading
@@ -41,12 +42,12 @@ class UserManager:
     def is_online(self,username:str) -> bool:
         return self.token_manager.get_user_by_username(username) is not None
 
-    def login(self, username: str, password: str, ip:str) -> str | None:
+    def login(self, username: str, password: str, ip:str, port:int) -> str | None:
         user = self.db.get_user_by_username(username)
         if not user or user["password"] != _hash_password(password):
             return None
         token = secrets.token_hex(16)
-        self.token_manager.store_token(token, username,ip)
+        self.token_manager.store_token(token, username,ip,port)
         return token
 
     def get_user_info(self, username: str) -> Optional[dict]:
@@ -55,7 +56,6 @@ class UserManager:
 
     def log_message(self, message: Message.Message) -> None:
         self.message_queue.put(message)
-        print(self.message_queue.qsize())
 
     def logout(self,token:str) -> None:
         self.token_manager.delete_token(token)
@@ -66,7 +66,7 @@ class UserManager:
 
     def _send_messages(self):
         while True:
-            temp_queue = multiprocessing.Queue()
+            temp_queue = queue.Queue()
             while not self.message_queue.empty():
                 msg: Message.Message = self.message_queue.get()
                 target_username = msg.receiver

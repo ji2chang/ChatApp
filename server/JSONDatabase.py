@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional
 
 
 class JSONDatabase:
-    def __init__(self, file_path: str = "server/users.json", sync_interval: int = 60):
+    def __init__(self, file_path: str = "users.json", sync_interval: int = 60):
         self.file_path = file_path
         self._ensure_file_exists()
         self.sync_interval = sync_interval

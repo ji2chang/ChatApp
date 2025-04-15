@@ -67,7 +67,7 @@ class RequestHandler:
             return json.dumps({"status": "error", "message": "register_error"})
 
     def _handle_login(self, params: dict) -> str:
-        required = ["username", "password","ip"]
+        required = ["username", "password","ip","port"]
         filtered_params = {k: params[k] for k in required if k in params}
         token = self.user_manager.login(**filtered_params)
         if token:

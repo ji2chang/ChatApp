@@ -20,7 +20,6 @@ class ServerCore:
         self._task_lock = threading.Lock()
         self._started = False
 
-
     def _server_action(self):
         while not self._shutdown_flag.is_set():
             try:

@@ -6,7 +6,7 @@ from typing import Any
 
 class TokenManager:
     def __init__(self,token_expire_time:int = 3600):
-        self.tokens = {} # token -> {uid:UID_3213,timestamp:123213,username:name}
+        self.tokens = {} # token -> {uid:UID_3213,timestamp:123213,username:name,ip:192.168.1.1,port:1111}
         self.lock = threading.Lock()
         def _daemon():
             while True:
@@ -52,12 +52,12 @@ class TokenManager:
             self.tokens.pop(token,None)
             self.username_to_token.pop(username,None)
 
-    def store_token(self, token: str, username: str, ip):
+    def store_token(self, token: str, username: str, ip:str,port:int):
         tk = self.username_to_token.get(username,None)
         if tk is not None:
             self.delete_token(tk)
         with self.lock:
-            self.tokens[token] = {"username": username, "timestamp": datetime.datetime.now().timestamp(), "ip": ip}
+            self.tokens[token] = {"username": username, "timestamp": datetime.datetime.now().timestamp(), "ip": ip,"port": port}
             self.username_to_token[username] = token
 
     def flush_token(self,token:str) -> None:
