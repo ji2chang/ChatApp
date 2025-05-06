@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any
 
 from server import UDPPortManager, UserUtil
+from server.SecureComunication import SecureComunication
 
 DEFAULT_SERVER_IP = "192.168.1.104"
 class APIClient:
@@ -26,6 +27,7 @@ class APIClient:
         self._chat_lock = threading.Lock()
         self._load_chats()
         self.tot_update = 0
+        self.secure_com = SecureComunication()
 
 
     def connect_server(self,server_ip:str,server_port:int = 49000):
@@ -157,11 +159,12 @@ class APIClient:
                 sock.close()
 
     def chat(self, target_user, message):
+        encrypted_message = self.secure_com.encrypt_message(message)  # Encrypt the message
         request = {
             "action": "chat",
             "params": {
                 "target_username": target_user,
-                "message": message,
+                "message": encrypted_message,
                 "token": self.current_user["token"]
             },
         }
@@ -170,7 +173,7 @@ class APIClient:
             request
         ).result()
         if response["status"] == "success":
-            self._add_message(target_user,self.current_user["nickname"], message,datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            self._add_message(target_user, self.current_user["nickname"], message, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         return response
 
     def _add_message(self,dest_user:str,sender:str,message:str,date:str):
@@ -187,14 +190,16 @@ class APIClient:
         while True:
             data, _ = self._default_sock.recvfrom(65535)
             parsed_data = json.loads(data.decode('utf-8'))
-            self._default_sock.sendto(json.dumps({"status":"success"}).encode('utf-8'), (self._server_ip, self._server_port))
+            self._default_sock.sendto(json.dumps({"status": "success"}).encode('utf-8'), (self._server_ip, self._server_port))
             sender = parsed_data["sender"]
+            encrypted_message = parsed_data["message"]
+            decrypted_message = self.secure_com.decrypt_message(encrypted_message)  # Decrypt the message
             if sender in self.friends:
                 nickname = self.friends[sender]["info"]["nickname"]
             else:
                 nickname = self.get_user_info(sender)
-                self.friends[sender] = {"info":{"nickname":nickname}}
-            self._add_message(sender,nickname,parsed_data["message"],parsed_data["date"])
+                self.friends[sender] = {"info": {"nickname": nickname}}
+            self._add_message(sender, nickname, decrypted_message, parsed_data["date"])
 
     def get_messages(self,target_user):
         return self.chat_history[self.current_user["username"]].get(target_user,[])

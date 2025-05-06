@@ -1,7 +1,8 @@
 from cryptography.fernet import Fernet
+from server.SecureComunication import SecureComunication
 
 
-class SecureCommunication:
+class SecureComunication:
     def __init__(self):
         # Generate a key for encryption and decryption
         self.key = Fernet.generate_key()
