@@ -1,6 +1,6 @@
 # Chat App
 
-Una semplice applicazione di chat realizzata in Python utilizzando `socket` e `threading`.
+Una semplice applicazione di chat realizzata in Python utilizzando `socket`, `threading` e `DearPyGUI`.
 
 ## Caratteristiche
 - Comunicazione in tempo reale tra client e server.
