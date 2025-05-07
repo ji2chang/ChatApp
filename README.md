@@ -15,3 +15,5 @@ Una semplice applicazione di chat realizzata in Python utilizzando `socket` e `t
    ```bash
    git clone https://github.com/tuo-utente/chat-app.git
    cd chat-app
+2. Esegui setup_venv.bat
+3. Esegui run-client.bat
